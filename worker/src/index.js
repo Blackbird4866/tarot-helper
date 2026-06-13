@@ -23,6 +23,10 @@ function compactKeywords(keywords = [], limit = 4) {
   return [...new Set(keywords.filter(Boolean).map(String))].slice(0, limit);
 }
 
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
 function fallbackPositionInsight(position) {
   const card = position.card;
   const keywords = compactKeywords(card?.keywords ?? [], 4);
@@ -33,7 +37,9 @@ function fallbackPositionInsight(position) {
     title: position.title,
     cardName: card?.name ?? "",
     summary: `${card?.name ?? "这张牌"}${orientation}落在「${position.title}」，${keywordText}。结合这个位置，它提示你关注「${position.prompt}」里的具体状态和可调整之处。`,
-    keywords
+    keywords,
+    evidence: "这是基于牌名、正逆位关键词与当前牌位含义的保底提示，建议生成 AI 解读后再展开联想。",
+    reflection: "这张牌让你最先想到现实中的哪个具体人、场景或选择？"
   };
 }
 
@@ -59,27 +65,32 @@ function completeReading(parsed, payload) {
         String(item.slotId),
         {
           slotId: String(item.slotId),
-          title: String(item.title ?? ""),
-          cardName: String(item.cardName ?? ""),
-          summary: String(item.summary ?? ""),
-          keywords: compactKeywords(item.keywords ?? [], 5)
+          title: cleanText(item.title),
+          cardName: cleanText(item.cardName),
+          summary: cleanText(item.summary),
+          keywords: compactKeywords(item.keywords ?? [], 5),
+          evidence: cleanText(item.evidence),
+          reflection: cleanText(item.reflection)
         }
       ])
   );
 
   return {
-    summary: String(parsed?.summary || fallback.summary),
+    summary: cleanText(parsed?.summary) || fallback.summary,
     keywords: compactKeywords(parsed?.keywords ?? fallback.keywords, 6),
     positionInsights: payload.positions.map((position) => {
+      const fallbackInsight = fallbackPositionInsight(position);
       const insight = existingInsights.get(position.slotId);
       if (insight?.summary) {
         return {
-          ...fallbackPositionInsight(position),
+          ...fallbackInsight,
           ...insight,
-          keywords: insight.keywords.length ? insight.keywords : fallbackPositionInsight(position).keywords
+          keywords: insight.keywords.length ? insight.keywords : fallbackInsight.keywords,
+          evidence: insight.evidence || fallbackInsight.evidence,
+          reflection: insight.reflection || fallbackInsight.reflection
         };
       }
-      return fallbackPositionInsight(position);
+      return fallbackInsight;
     })
   };
 }
@@ -119,7 +130,8 @@ async function createReading(request, env) {
 
   const baseUrl = env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
   const model = env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
-  const maxTokens = Number(env.DEEPSEEK_MAX_TOKENS ?? 3200);
+  const maxTokens = Number(env.DEEPSEEK_MAX_TOKENS ?? 10000);
+  const startedAt = Date.now();
 
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
@@ -133,21 +145,34 @@ async function createReading(request, env) {
         {
           role: "system",
           content:
-            "你是一位温和、清晰、负责任的塔罗解读辅助写作者。只基于用户提供的牌阵、牌位、牌义和正逆位生成中文解读。避免宿命论和绝对化判断，把塔罗结果表达为反思与行动建议。你必须只输出一个合法 JSON object，不要输出 Markdown、解释、分隔线或 JSON 之外的任何文字。"
+            "你是一位温和、清晰、负责任的塔罗解读灵感助手。你的目标不是替用户下最终判断，而是帮助用户把牌面、牌位、问题和现实处境连接起来，提供可继续联想的线索。只基于用户提供的牌阵、牌位、牌义和正逆位生成中文内容。避免宿命论、恐吓式表达和绝对化判断。总体总结可以给出一个结论性的启示；单牌部分必须更像启发式分析，说明它在这个具体问题与这个牌位中可能反映了什么。你必须只输出一个合法 JSON object，不要输出 Markdown、解释、分隔线或 JSON 之外的任何文字。"
         },
         {
           role: "user",
-          content: `请为以下塔罗牌阵生成适合界面展示的结构化解读。若 topic 不为空，必须优先按 topic 指定方向解读；question 是用户的具体问题。输出必须是严格 JSON，格式如下：
+          content: `请为以下塔罗牌阵生成适合界面展示的结构化解读。若 topic 不为空，必须优先按 topic 指定方向解读；question 是用户的具体问题。
+
+写作要求：
+1. summary 是整体结论性的启示，不要太短，要有人情味，像在陪用户复盘这件事。5 张牌时写 120-180 个中文字符；10 张及以上必须写 2-3 句，至少 180 个中文字符，控制在 180-260 个中文字符。10 张及以上不能只写一条压缩结论，必须同时点出主线牌与补充牌之间的关系。
+2. positionInsights 不是单独解释牌义。每一张牌都必须结合 question/topic、牌阵位置 title/prompt、具体牌名、正逆位来说明：它在这个问题里提供了什么观察角度。若有 6-10 号补充牌，必须把它们作为对 1-5 号主牌的现实细节补充来写，而不是孤立解释。
+3. 每张牌的 keywords 必须是“问题语境关键词”，不要只写牌本身的通用关键词。例如不要只写“开始、冒险”，要写成“事业试错、关系主动、财务新机会”这种贴着问题的词。
+4. 每张牌必须写 evidence，不能省略，不能留空，不能只写“基于牌名/关键词”。要明确指出这条灵感来自哪一类牌面/牌义依据，可以包括牌面人物姿态、象征物、花色元素、数字/宫廷身份、正逆位张力、牌位含义。若输入中没有足够牌面图像细节，就基于已知韦特通用象征与输入牌义说明，不要编造过度具体的画面。
+5. 每张牌必须写 reflection，不能省略，不能留空。它是给用户一个可继续自己联想的问题，帮助用户自己完成解读。
+6. 语气是“提供灵感”，不要写成“我已经替你算出结局”。可使用“也许、可能、值得观察、可以联想”等词。
+7. 输出中每个 positionInsights 项都必须包含 slotId/title/cardName/summary/keywords/evidence/reflection 七个字段。即使有 10 张或更多牌，也不能为了简短而省略 evidence 或 reflection。
+
+输出必须是严格 JSON，格式如下：
 {
-  "summary": "一句总结性结论，80字以内",
-  "keywords": ["关键词1", "关键词2", "关键词3"],
+  "summary": "整体结论性的启示，5张牌120-180个中文字符；10张及以上必须2-3句且不少于180个中文字符",
+  "keywords": ["结合问题的关键词1", "结合问题的关键词2", "结合问题的关键词3"],
   "positionInsights": [
     {
       "slotId": "必须使用输入里的 slotId",
       "title": "牌位名",
       "cardName": "牌名",
-      "summary": "这张牌在这个牌位上的含义，90字以内",
-      "keywords": ["关键词1", "关键词2", "关键词3"]
+      "summary": "结合具体问题、牌位和正逆位的启发式分析，90-150个中文字符",
+      "keywords": ["问题语境关键词1", "问题语境关键词2", "问题语境关键词3"],
+      "evidence": "这条灵感来自牌面/花色/数字/宫廷身份/正逆位/牌位含义中的哪些依据，60-100个中文字符",
+      "reflection": "一个引导用户自己继续联想的问题，30-60个中文字符"
     }
   ]
 }
@@ -172,7 +197,7 @@ ${JSON.stringify(payload, null, 2)}`
 
   const completion = await response.json();
   const content = completion.choices?.[0]?.message?.content;
-  return json({ reading: parseReadingJson(content, payload) });
+  return json({ reading: parseReadingJson(content, payload), durationMs: Date.now() - startedAt });
 }
 
 export default {

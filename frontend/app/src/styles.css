@@ -190,6 +190,11 @@ button {
   flex-direction: column;
 }
 
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .board-panel {
   display: flex;
   flex-direction: column;
@@ -1250,6 +1255,10 @@ textarea {
 .detail-panel {
   margin-top: 12px;
   padding: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid color-mix(in srgb, var(--card-element, var(--green)) 52%, transparent);
   border-radius: 8px;
   background:
@@ -1303,6 +1312,13 @@ textarea {
   background: rgba(62, 27, 23, 0.42);
 }
 
+.board-summary.is-pending {
+  border-color: rgba(221, 197, 113, 0.28);
+  background:
+    linear-gradient(110deg, rgba(218, 173, 91, 0.11), rgba(89, 116, 166, 0.1)),
+    rgba(11, 13, 17, 0.74);
+}
+
 .board-summary p,
 .ai-card-reading > p {
   color: var(--card-element-text, var(--green));
@@ -1333,6 +1349,22 @@ textarea {
   font-size: 0.76rem;
 }
 
+.generation-timing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.generation-timing span {
+  padding: 4px 8px;
+  border: 1px solid rgba(216, 180, 95, 0.28);
+  border-radius: 999px;
+  color: var(--gold-bright);
+  background: rgba(11, 9, 15, 0.56);
+  font-size: 0.74rem;
+}
+
 .ai-card-reading {
   margin-top: 12px;
   padding-top: 12px;
@@ -1347,6 +1379,36 @@ textarea {
 
 .ai-card-reading > p:last-child {
   color: var(--card-element-text, var(--muted));
+}
+
+.ai-card-reading.is-pending {
+  opacity: 0.82;
+}
+
+.ai-evidence,
+.ai-reflection {
+  margin-top: 9px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--card-element, var(--gold)) 32%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-element, var(--gold)) 11%, rgba(8, 10, 12, 0.72));
+}
+
+.ai-evidence strong,
+.ai-reflection strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--card-element-text, var(--gold));
+  font-size: 0.76rem;
+}
+
+.ai-evidence span,
+.ai-reflection span {
+  display: block;
+  color: var(--ivory);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .spin {

@@ -1,7 +1,7 @@
 export const spreads = [
   {
     id: "advanced-basic",
-    name: "基础牌阵（进阶）",
+    name: "基础牌阵",
     subtitle: "大牌定走向，小牌补细节",
     description: "在基础五张牌上，每个位置各加一张小牌。小牌用于补充细节，不推翻大牌。",
     source: "塔罗二阶（四）进阶牌阵.pptx / slide 2",

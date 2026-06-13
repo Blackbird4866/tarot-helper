@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Two-stage basic spread flow** — the basic spread now draws cards 1-5 first and enables AI readings from those five cards, then offers a supplemental draw for cards 6-10.
+- **AI inspiration fields** — per-card AI insights now include card-based evidence and a follow-up reflection prompt.
+- **Generation timing UI** — AI generation shows estimated wait time while running and displays actual client/model duration after completion.
 - **Unified Cloudflare Worker deployment** — a single Worker (`tarot-helper`) now serves both the React SPA and the `/api/*` routes.
 - **Static assets in Worker** — `worker/wrangler.toml` configures `frontend/app/dist` with SPA fallback (`not_found_handling = "single-page-application"`) and routes `/api/*` to the Worker script first (`run_worker_first`).
 - **Worker tooling** — `worker/package.json` pins Wrangler (`^4.20.0`) and adds `npm run dev` / `npm run deploy` scripts.
@@ -18,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Basic spread name** — renamed `基础牌阵（进阶）` to `基础牌阵`.
+- **DeepSeek output budget** — raised the local/default token budget for fuller 10-card readings.
+- **AI prompt shape** — readings now emphasize user-led interpretation, longer overall conclusions, question-specific keywords, and required evidence/reflection fields.
+- **Local desktop scripts** — macOS and Windows scripts continue to rebuild the current frontend and Worker so local versions receive these updates automatically.
 - **Worker name** — renamed from `tarot-helper-api` to `tarot-helper` to reflect the unified app.
 - **Deployment architecture** — replaced the previous Cloudflare Pages + separate Worker setup with a single Worker deploy target.
 - **API routing** — frontend uses same-origin `/api/readings` by default; `VITE_API_BASE_URL` is no longer required for production.

@@ -73,6 +73,23 @@ test("生成请求 payload 包含牌阵、问题、牌位与牌义摘要", () =>
   assert.deepEqual(payload.positions[1].card.keywords, tarotCards[1].reversedKeywords);
 });
 
+test("生成请求 payload 会过滤未选择的牌位", () => {
+  const spread = spreads.find((item) => item.id === "advanced-basic");
+  const selections = Object.fromEntries(
+    spread.slots.map((slot) => [
+      slot.id,
+      {
+        arcana: slot.preferredArcana ?? "",
+        cardId: slot.number <= 5 ? tarotCards[slot.number - 1].id : "",
+        orientation: "upright"
+      }
+    ])
+  );
+  const payload = buildReadingPayload({ spread, question: "先看主线", topic: "事业", selections });
+  assert.equal(payload.positions.length, 5);
+  assert.deepEqual(payload.positions.map((position) => position.number), [1, 2, 3, 4, 5]);
+});
+
 test("一键抽牌会填满当前牌阵并尊重牌位偏好", () => {
   const spread = spreads.find((item) => item.id === "advanced-basic");
   const selections = drawCardsForSpread(spread, () => 0.1);
@@ -87,6 +104,39 @@ test("一键抽牌会填满当前牌阵并尊重牌位偏好", () => {
       assert.equal(card.arcana, slot.preferredArcana);
     }
   }
+});
+
+test("基础牌阵支持先抽 1-5 号大牌，再补抽 6-10 号小牌", () => {
+  const spread = spreads.find((item) => item.id === "advanced-basic");
+  const primarySlotIds = spread.slots.filter((slot) => slot.number <= 5).map((slot) => slot.id);
+  const supplementSlotIds = spread.slots.filter((slot) => slot.number > 5).map((slot) => slot.id);
+
+  const primarySelections = drawCardsForSpread(spread, () => 0.1, { slotIds: primarySlotIds });
+  assert.equal(Object.keys(primarySelections).length, 5);
+  assert.deepEqual(Object.keys(primarySelections), primarySlotIds);
+  assert.ok(
+    Object.values(primarySelections).every((selection) => {
+      const card = tarotCards.find((item) => item.id === selection.cardId);
+      return card?.arcana === "major";
+    })
+  );
+
+  const supplementSelections = drawCardsForSpread(spread, () => 0.1, {
+    slotIds: supplementSlotIds,
+    existingSelections: primarySelections
+  });
+  assert.equal(Object.keys(supplementSelections).length, 5);
+  assert.deepEqual(Object.keys(supplementSelections), supplementSlotIds);
+  assert.equal(
+    new Set([...Object.values(primarySelections), ...Object.values(supplementSelections)].map((selection) => selection.cardId)).size,
+    10
+  );
+  assert.ok(
+    Object.values(supplementSelections).every((selection) => {
+      const card = tarotCards.find((item) => item.id === selection.cardId);
+      return card?.arcana === "minor";
+    })
+  );
 });
 
 test("没有指定大小牌的牌阵默认从 78 张牌中不重复随机", () => {

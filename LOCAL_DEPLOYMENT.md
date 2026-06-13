@@ -8,6 +8,8 @@ The local version builds the React frontend and runs the Cloudflare Worker local
 http://127.0.0.1:8788
 ```
 
+Both scripts rebuild the current frontend and run the current Worker code every time, so macOS and Windows local versions pick up the latest repository updates automatically.
+
 ## Requirements
 
 - Node.js 22 or newer
@@ -65,6 +67,8 @@ Without the key, the app still opens and supports card drawing, card meanings, a
 ```bash
 npx wrangler dev --ip 127.0.0.1 --port 8788
 ```
+
+Current local app behavior includes the two-stage basic spread draw flow, AI generation timing hints, and post-generation timing statistics for 5-card and 10-card readings.
 
 ## Stop The App
 

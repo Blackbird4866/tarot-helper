@@ -10,28 +10,27 @@ export function buildReadingPayload({ spread, question, topic, selections }) {
     },
     question: question.trim(),
     topic: topic?.trim() ?? "",
-    positions: spread.slots.map((slot) => {
+    positions: spread.slots.flatMap((slot) => {
       const selection = selections[slot.id];
       const card = selection?.cardId ? cardsById.get(selection.cardId) : null;
+      if (!card) return [];
       return {
         slotId: slot.id,
         number: slot.number,
         title: slot.title,
         prompt: slot.prompt,
         orientation: selection?.orientation ?? "upright",
-        card: card
-          ? {
-              id: card.id,
-              name: card.name,
-              arcana: card.arcana,
-              suit: card.suit,
-              rank: card.rank,
-              keywords:
-                selection?.orientation === "reversed" ? card.reversedKeywords : card.uprightKeywords,
-              detail: card.detail,
-              source: card.source
-            }
-          : null
+        card: {
+          id: card.id,
+          name: card.name,
+          arcana: card.arcana,
+          suit: card.suit,
+          rank: card.rank,
+          keywords:
+            selection?.orientation === "reversed" ? card.reversedKeywords : card.uprightKeywords,
+          detail: card.detail,
+          source: card.source
+        }
       };
     })
   };

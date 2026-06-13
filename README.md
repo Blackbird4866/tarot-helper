@@ -38,6 +38,13 @@ npm run dev
 
 本地开发时，Vite 会把 `/api` 代理到 `http://127.0.0.1:8788`。前端默认请求同域 `/api/readings`，无需配置 `VITE_API_BASE_URL`。
 
+## Features
+
+- 基础牌阵支持两段式抽牌：先抽 1-5 号主线牌并可立即生成解读，再补抽 6-10 号细节牌后生成完整解读。
+- AI 解读以“灵感辅助”为目标，整体总结给出结论性启示，单牌详情结合问题、牌位、正逆位、牌面依据与继续联想。
+- 生成中会提示预计耗时；完成后显示本次用时与模型耗时，便于区分 5 张和 10 张牌阵的等待时间。
+- 鼠标悬停或点击牌位时，可在详情栏查看牌义、AI 牌位解读、牌面依据和继续联想。
+
 ## Local Desktop Deployment
 
 本仓库提供 macOS 和 Windows 本地部署脚本，适合不想手动分别启动前端和 Worker 的场景：
@@ -52,6 +59,8 @@ local/windows/start-tarot-helper.bat
 ```text
 http://127.0.0.1:8788
 ```
+
+macOS 与 Windows 本地脚本都会在启动时重新构建 `frontend/app` 并运行当前 `worker`，因此仓库更新后再次启动脚本即可获得最新功能。
 
 详细说明见 [LOCAL_DEPLOYMENT.md](LOCAL_DEPLOYMENT.md)。
 

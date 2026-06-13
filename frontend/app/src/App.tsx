@@ -47,12 +47,23 @@ interface PositionInsight {
   cardName: string;
   summary: string;
   keywords: string[];
+  evidence?: string;
+  reflection?: string;
 }
 
 interface ReadingResult {
   summary: string;
   keywords: string[];
   positionInsights: PositionInsight[];
+  clientDurationMs?: number;
+  serverDurationMs?: number;
+}
+
+interface GenerationMeta {
+  cardCount: number;
+  startedAt: number;
+  clientDurationMs?: number;
+  serverDurationMs?: number;
 }
 
 function emptySelections(spread: Spread): Record<string, SlotSelection> {
@@ -78,6 +89,18 @@ function getCardElementKey(card?: TarotCard): string {
   return card.suit ? elementKeyBySuit[card.suit] : "";
 }
 
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0) return "";
+  const seconds = ms / 1000;
+  return seconds < 60 ? `${seconds.toFixed(1)} 秒` : `${Math.floor(seconds / 60)} 分 ${Math.round(seconds % 60)} 秒`;
+}
+
+function estimateGenerationText(cardCount: number): string {
+  if (cardCount <= 5) return "预计 20-40 秒";
+  if (cardCount <= 10) return "预计 45-90 秒";
+  return "预计 60-120 秒";
+}
+
 function normalizeReadingResult(value: unknown): ReadingResult {
   if (typeof value === "string") {
     return {
@@ -97,7 +120,9 @@ function normalizeReadingResult(value: unknown): ReadingResult {
           title: String(item.title ?? ""),
           cardName: String(item.cardName ?? ""),
           summary: String(item.summary ?? ""),
-          keywords: Array.isArray(item.keywords) ? item.keywords.slice(0, 5).map(String) : []
+          keywords: Array.isArray(item.keywords) ? item.keywords.slice(0, 5).map(String) : [],
+          evidence: String(item.evidence ?? ""),
+          reflection: String(item.reflection ?? "")
         }))
       : []
   };
@@ -116,11 +141,24 @@ export function App() {
   const [readingResult, setReadingResult] = useState<ReadingResult | null>(null);
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationMeta, setGenerationMeta] = useState<GenerationMeta | null>(null);
 
   const activeSlot = activeSpread.slots.find((slot: SpreadSlot) => slot.id === activeSlotId) ?? activeSpread.slots[0];
   const activeSelection = selections[activeSlot.id];
   const completedCount = activeSpread.slots.filter((slot: SpreadSlot) => selections[slot.id]?.cardId).length;
+  const isAdvancedBasic = activeSpread.id === "advanced-basic";
+  const basicPrimarySlots = activeSpread.slots.filter((slot: SpreadSlot) => slot.number >= 1 && slot.number <= 5);
+  const basicSupplementSlots = activeSpread.slots.filter((slot: SpreadSlot) => slot.number >= 6 && slot.number <= 10);
+  const basicPrimaryComplete =
+    isAdvancedBasic && basicPrimarySlots.every((slot: SpreadSlot) => selections[slot.id]?.cardId);
   const allComplete = completedCount === activeSpread.slots.length;
+  const canGenerate = isAdvancedBasic ? basicPrimaryComplete : allComplete;
+  const drawButtonLabel =
+    isAdvancedBasic && basicPrimaryComplete && !allComplete
+      ? "补充抽牌"
+      : isAdvancedBasic && allComplete
+        ? "重新抽牌"
+        : "一键抽牌";
   const detailSlot =
     activeSpread.slots.find((slot: SpreadSlot) => slot.id === hoveredSlotId) ?? activeSlot;
   const detailSelection = selections[detailSlot.id];
@@ -162,6 +200,7 @@ export function App() {
     setHoveredSlotId(null);
     setReadingResult(null);
     setError("");
+    setGenerationMeta(null);
     setTopic("");
   }
 
@@ -180,33 +219,74 @@ export function App() {
   }
 
   function drawAllCards() {
-    const drawnSelections = drawCardsForSpread(activeSpread) as Record<string, SlotSelection>;
-    setSelections(drawnSelections);
-    setActiveSlotId(activeSpread.slots[0].id);
+    if (isAdvancedBasic) {
+      if (basicPrimaryComplete && !allComplete) {
+        const supplementalSelections = drawCardsForSpread(activeSpread, Math.random, {
+          slotIds: basicSupplementSlots.map((slot: SpreadSlot) => slot.id),
+          existingSelections: selections
+        }) as Record<string, SlotSelection>;
+        setSelections((current) => ({ ...current, ...supplementalSelections }));
+        setActiveSlotId(basicSupplementSlots[0]?.id ?? activeSpread.slots[0].id);
+      } else {
+        const resetSelections = emptySelections(activeSpread);
+        const primarySelections = drawCardsForSpread(activeSpread, Math.random, {
+          slotIds: basicPrimarySlots.map((slot: SpreadSlot) => slot.id)
+        }) as Record<string, SlotSelection>;
+        setSelections({ ...resetSelections, ...primarySelections });
+        setActiveSlotId(basicPrimarySlots[0]?.id ?? activeSpread.slots[0].id);
+      }
+    } else {
+      const drawnSelections = drawCardsForSpread(activeSpread) as Record<string, SlotSelection>;
+      setSelections(drawnSelections);
+      setActiveSlotId(activeSpread.slots[0].id);
+    }
     setHoveredSlotId(null);
     setReadingResult(null);
     setError("");
+    setGenerationMeta(null);
   }
 
   async function generateReading() {
+    const payload = buildReadingPayload({ spread: activeSpread, question, topic, selections });
+    const startedAt = performance.now();
+    setGenerationMeta({ cardCount: payload.positions.length, startedAt });
     setIsGenerating(true);
     setError("");
     setReadingResult(null);
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 70000);
+    const timeout = window.setTimeout(() => controller.abort(), 120000);
     try {
       const response = await fetch(`${apiBaseUrl}/api/readings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildReadingPayload({ spread: activeSpread, question, topic, selections })),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(body.error ?? "生成解读失败");
       }
-      setReadingResult(normalizeReadingResult(body.reading));
+      const clientDurationMs = performance.now() - startedAt;
+      const nextReading = normalizeReadingResult(body.reading);
+      nextReading.clientDurationMs = clientDurationMs;
+      nextReading.serverDurationMs = Number(body.durationMs) || undefined;
+      setGenerationMeta({
+        cardCount: payload.positions.length,
+        startedAt,
+        clientDurationMs,
+        serverDurationMs: nextReading.serverDurationMs
+      });
+      setReadingResult(nextReading);
     } catch (err) {
+      const clientDurationMs = performance.now() - startedAt;
+      setGenerationMeta((current) =>
+        current
+          ? {
+              ...current,
+              clientDurationMs
+            }
+          : null
+      );
       if (err instanceof DOMException && err.name === "AbortError") {
         setError("DeepSeek 响应超时，请稍后重试，或缩短问题/牌阵内容。");
       } else {
@@ -379,19 +459,28 @@ export function App() {
             <div className="board-actions">
               <button className="secondary-button" disabled={isGenerating} onClick={drawAllCards}>
                 <Shuffle size={18} />
-                一键抽牌
+                {drawButtonLabel}
               </button>
-              <button className="primary-button" disabled={!allComplete || isGenerating} onClick={generateReading}>
+              <button className="primary-button" disabled={!canGenerate || isGenerating} onClick={generateReading}>
                 {isGenerating ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
                 {isGenerating ? "生成中..." : "生成解读"}
               </button>
             </div>
           </div>
 
-          {(readingResult || error) && (
-            <section className={`board-summary ${error ? "has-error" : ""}`}>
-              <p>{error ? "生成遇到问题" : "总结性结论"}</p>
-              <h3>{error || readingResult?.summary}</h3>
+          <section className={`board-summary ${error ? "has-error" : ""} ${!readingResult && !error ? "is-pending" : ""}`}>
+            <p>{error ? "生成遇到问题" : readingResult ? "总结性结论" : "AI 解读"}</p>
+            <h3>
+              {error ||
+                (isGenerating && generationMeta
+                  ? `${generationMeta.cardCount} 张牌正在生成解读，${estimateGenerationText(generationMeta.cardCount)}。10 张完整牌阵会更细，通常比 5 张明显久一些。`
+                  : readingResult?.summary) ||
+                (allComplete
+                  ? "等待 AI 解读。点击「生成解读」后，这里会给出整组牌的结论性启示。"
+                  : isAdvancedBasic && basicPrimaryComplete
+                    ? "等待 AI 解读。当前会先基于 1-5 号基础牌生成启示；补充抽牌后可再结合 6-10 号细节重解。"
+                    : "等待 AI 解读。先完成必要牌位，系统会在这里整理整组牌的核心启示。")}
+            </h3>
               {!error && readingResult?.keywords.length ? (
                 <div className="summary-keywords">
                   {readingResult.keywords.map((keyword) => (
@@ -399,8 +488,22 @@ export function App() {
                   ))}
                 </div>
               ) : null}
-            </section>
-          )}
+              {!error && generationMeta && (isGenerating || generationMeta.clientDurationMs) ? (
+                <div className="generation-timing">
+                  <span>{generationMeta.cardCount} 张牌</span>
+                  {isGenerating ? (
+                    <span>{estimateGenerationText(generationMeta.cardCount)}</span>
+                  ) : (
+                    <>
+                      <span>本次用时 {formatDuration(generationMeta.clientDurationMs)}</span>
+                      {generationMeta.serverDurationMs ? (
+                        <span>模型耗时 {formatDuration(generationMeta.serverDurationMs)}</span>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : null}
+          </section>
 
           <div
             className={`spread-board ${
@@ -595,18 +698,37 @@ export function App() {
                 </div>
                 <p>{detailCard.detail}</p>
                 <small>{detailSlot.title}：{detailSlot.prompt}</small>
-                {detailInsight && (
-                  <div className="ai-card-reading">
-                    <p>AI 牌位解读</p>
-                    <h4>{detailInsight.title || detailSlot.title}</h4>
-                    <div className="keyword-row">
-                      {detailInsight.keywords.map((keyword) => (
-                        <span key={keyword}>{keyword}</span>
-                      ))}
-                    </div>
-                    <p>{detailInsight.summary}</p>
-                  </div>
-                )}
+                <div className={`ai-card-reading ${detailInsight ? "" : "is-pending"}`}>
+                  <p>AI 牌位解读</p>
+                  {detailInsight ? (
+                    <>
+                      <h4>{detailInsight.title || detailSlot.title}</h4>
+                      <div className="keyword-row">
+                        {detailInsight.keywords.map((keyword) => (
+                          <span key={keyword}>{keyword}</span>
+                        ))}
+                      </div>
+                      <p>{detailInsight.summary}</p>
+                      {detailInsight.evidence && (
+                        <div className="ai-evidence">
+                          <strong>牌面依据</strong>
+                          <span>{detailInsight.evidence}</span>
+                        </div>
+                      )}
+                      {detailInsight.reflection && (
+                        <div className="ai-reflection">
+                          <strong>继续联想</strong>
+                          <span>{detailInsight.reflection}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <h4>{detailSlot.title}</h4>
+                      <p>等待 AI 解读。生成后这里会结合你的问题、牌位含义和这张牌的正逆位，给出可供你继续联想的线索。</p>
+                    </>
+                  )}
+                </div>
               </>
             ) : (
               <div className="empty-detail">悬停或点击已选牌位后，会在这里显示对应牌义。</div>
