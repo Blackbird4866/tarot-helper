@@ -1,33 +1,19 @@
-import cors from "cors";
-import express from "express";
-import fs from "node:fs";
-import OpenAI from "openai";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type"
+};
 
-function loadLocalEnv() {
-  if (!fs.existsSync(".env")) return;
-  const lines = fs.readFileSync(".env", "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const separator = trimmed.indexOf("=");
-    if (separator === -1) continue;
-    const key = trimmed.slice(0, separator).trim();
-    const rawValue = trimmed.slice(separator + 1).trim();
-    const value = rawValue.replace(/^["']|["']$/g, "");
-    if (key && process.env[key] === undefined) {
-      process.env[key] = value;
+function json(data, init = {}) {
+  return new Response(JSON.stringify(data), {
+    ...init,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...corsHeaders,
+      ...(init.headers ?? {})
     }
-  }
+  });
 }
-
-loadLocalEnv();
-
-const app = express();
-const port = Number(process.env.PORT ?? 8787);
-const deepseekBaseURL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
-const deepseekModel = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
-const deepseekMaxTokens = Number(process.env.DEEPSEEK_MAX_TOKENS ?? 3200);
-const deepseekTimeoutMs = Number(process.env.DEEPSEEK_TIMEOUT_MS ?? 60000);
 
 function cardOrientationLabel(orientation) {
   return orientation === "reversed" ? "逆位" : "正位";
@@ -110,47 +96,39 @@ function parseReadingJson(content, payload) {
   const jsonText = start >= 0 && end > start ? withoutFence.slice(start, end + 1) : withoutFence;
 
   try {
-    const parsed = JSON.parse(jsonText);
-    return completeReading(parsed, payload);
+    return completeReading(JSON.parse(jsonText), payload);
   } catch {
-    console.warn(`DeepSeek returned non-JSON content (${trimmed.length} chars); using local structured fallback.`);
     return fallbackReading(payload);
   }
 }
 
-app.use(cors({ origin: ["http://127.0.0.1:5173", "http://localhost:5173"] }));
-app.use(express.json({ limit: "1mb" }));
-
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
-});
-
-app.post("/api/readings", async (req, res) => {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    res.status(400).json({
-      error: "缺少 DEEPSEEK_API_KEY。请在启动后端前设置环境变量，例如 DEEPSEEK_API_KEY=你的_key npm run dev。"
-    });
-    return;
+async function createReading(request, env) {
+  if (!env.DEEPSEEK_API_KEY) {
+    return json({ error: "缺少 DEEPSEEK_API_KEY。请在 Cloudflare Worker secrets 中配置。" }, { status: 400 });
   }
 
-  const payload = req.body;
+  const payload = await request.json();
   if (!payload?.spread?.name || !Array.isArray(payload?.positions)) {
-    res.status(422).json({ error: "请求格式不完整：需要 spread 与 positions。" });
-    return;
+    return json({ error: "请求格式不完整：需要 spread 与 positions。" }, { status: 422 });
   }
 
   const missing = payload.positions.filter((position) => !position.card);
   if (missing.length > 0) {
-    res.status(422).json({ error: "还有牌位没有选择完整，无法生成解读。" });
-    return;
+    return json({ error: "还有牌位没有选择完整，无法生成解读。" }, { status: 422 });
   }
 
-  try {
-    const startedAt = Date.now();
-    const client = new OpenAI({ apiKey, baseURL: deepseekBaseURL, timeout: deepseekTimeoutMs });
-    const completion = await client.chat.completions.create({
-      model: deepseekModel,
+  const baseUrl = env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
+  const model = env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+  const maxTokens = Number(env.DEEPSEEK_MAX_TOKENS ?? 3200);
+
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.DEEPSEEK_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
       messages: [
         {
           role: "system",
@@ -180,22 +158,44 @@ ${JSON.stringify(payload, null, 2)}`
       ],
       stream: false,
       response_format: { type: "json_object" },
-      max_tokens: deepseekMaxTokens,
+      max_tokens: maxTokens,
       extra_body: {
         thinking: { type: "disabled" }
       }
-    });
+    })
+  });
 
-    const content = completion.choices?.[0]?.message?.content;
-    const reading = parseReadingJson(content, payload);
-    console.log(`DeepSeek reading generated in ${Date.now() - startedAt}ms`);
-    res.json({ reading });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "未知错误";
-    res.status(502).json({ error: `DeepSeek 生成失败：${message}` });
+  if (!response.ok) {
+    const errorText = await response.text();
+    return json({ error: `DeepSeek 生成失败：${response.status} ${errorText.slice(0, 500)}` }, { status: 502 });
   }
-});
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`Tarot reading API listening on http://127.0.0.1:${port}`);
-});
+  const completion = await response.json();
+  const content = completion.choices?.[0]?.message?.content;
+  return json({ reading: parseReadingJson(content, payload) });
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    if (url.pathname === "/api/health" && request.method === "GET") {
+      return json({ ok: true });
+    }
+
+    if (url.pathname === "/api/readings" && request.method === "POST") {
+      try {
+        return await createReading(request, env);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "未知错误";
+        return json({ error: `Worker 处理失败：${message}` }, { status: 500 });
+      }
+    }
+
+    return json({ error: "Not found" }, { status: 404 });
+  }
+};

@@ -1,5 +1,10 @@
 node_modules/
 dist/
 .env
+.dev.vars
+.wrangler/
+.vite/
 .DS_Store
 npm-debug.log*
+frontend/app/node_modules/
+frontend/app/dist/

@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Run `wrangler dev` in ../../worker to serve the local API on 127.0.0.1:8787.
       "/api": "http://127.0.0.1:8787"
     }
   }

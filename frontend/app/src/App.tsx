@@ -15,6 +15,7 @@ import type { ArcanaType, MinorSuit, SlotSelection, Spread, SpreadSlot, TarotCar
 
 const allSpreads = spreadData as Spread[];
 const allCards = tarotCardData as TarotCard[];
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const arcanaLabels = arcanaLabelData as Record<ArcanaType, string>;
 const rankLabels = rankLabelData as Record<string, string>;
 const suitLabels = suitLabelData as Record<MinorSuit, string>;
@@ -194,7 +195,7 @@ export function App() {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 70000);
     try {
-      const response = await fetch("/api/readings", {
+      const response = await fetch(`${apiBaseUrl}/api/readings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildReadingPayload({ spread: activeSpread, question, topic, selections })),
