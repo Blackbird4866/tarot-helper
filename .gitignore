@@ -8,3 +8,4 @@ dist/
 npm-debug.log*
 frontend/app/node_modules/
 frontend/app/dist/
+worker/node_modules/
