@@ -36,7 +36,24 @@ npm install
 npm run dev
 ```
 
-本地开发时，Vite 会把 `/api` 代理到 `http://127.0.0.1:8787`。前端默认请求同域 `/api/readings`，无需配置 `VITE_API_BASE_URL`。
+本地开发时，Vite 会把 `/api` 代理到 `http://127.0.0.1:8788`。前端默认请求同域 `/api/readings`，无需配置 `VITE_API_BASE_URL`。
+
+## Local Desktop Deployment
+
+本仓库提供 macOS 和 Windows 本地部署脚本，适合不想手动分别启动前端和 Worker 的场景：
+
+```text
+local/macos/start-tarot-helper.command
+local/windows/start-tarot-helper.bat
+```
+
+脚本会自动安装依赖、运行测试、构建前端，并在本机启动完整应用：
+
+```text
+http://127.0.0.1:8788
+```
+
+详细说明见 [LOCAL_DEPLOYMENT.md](LOCAL_DEPLOYMENT.md)。
 
 ## Worker
 
