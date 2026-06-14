@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Project positioning** — updated public wording to emphasize Tarot-Helper as a tarot reading inspiration and assistance tool rather than a deterministic reading engine.
+- **App name** — browser title and in-app brand now use `Tarot-Helper`.
 - **Basic spread name** — renamed `基础牌阵（进阶）` to `基础牌阵`.
 - **DeepSeek output budget** — raised the local/default token budget for fuller 10-card readings.
 - **AI prompt shape** — readings now emphasize user-led interpretation, longer overall conclusions, question-specific keywords, and required evidence/reflection fields.

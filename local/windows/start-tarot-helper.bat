@@ -19,7 +19,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo == Tarot Helper local deploy: Windows ==
+echo == Tarot-Helper local deploy: Windows ==
 echo.
 
 echo Installing frontend dependencies...

@@ -308,7 +308,7 @@ export function App() {
             </div>
             <div>
               <p>Tarot Workbench</p>
-              <h1>塔罗解读辅助</h1>
+              <h1>Tarot-Helper</h1>
             </div>
           </div>
 

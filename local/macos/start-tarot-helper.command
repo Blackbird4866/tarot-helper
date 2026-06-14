@@ -17,7 +17,7 @@ command -v npm >/dev/null 2>&1 || {
   exit 1
 }
 
-echo "== Tarot Helper local deploy: macOS =="
+echo "== Tarot-Helper local deploy: macOS =="
 echo
 
 echo "Installing frontend dependencies..."
