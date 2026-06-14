@@ -506,7 +506,7 @@ export function App() {
           </section>
 
           <div
-            className={`spread-board ${
+            className={`spread-board spread-${activeSpread.id} ${
               readingStats.dominantElement ? `dominant-${readingStats.dominantElement}` : ""
             }`}
             aria-label={`${activeSpread.name} 牌位布局`}
